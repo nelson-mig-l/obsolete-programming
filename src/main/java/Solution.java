@@ -1,4 +1,4 @@
-import java.io.InputStream;
+import java.io.*;
 import java.util.*;
 import java.util.function.*;
 import java.util.stream.Collectors;
@@ -21,7 +21,19 @@ class Solution {
     static class FunctionTable extends HashMap<String, Instructions> {
     }
 
-    interface InstructionBody extends BiConsumer<ValueStack, FunctionTable> {
+    static class Context {
+        private final ValueStack stack;
+        private final FunctionTable table;
+        private final IO io;
+
+        Context(ValueStack stack, FunctionTable table, IO io) {
+            this.stack = stack;
+            this.table = table;
+            this.io = io;
+        }
+    }
+
+    interface InstructionBody extends Consumer<Context> {
     }
 
     static class Instruction {
@@ -33,8 +45,8 @@ class Solution {
             this.body = body;
         }
 
-        void execute(ValueStack stack, FunctionTable table) {
-            body.accept(stack, table);
+        void execute(Context ctx) {
+            body.accept(ctx);
         }
 
         @Override
@@ -48,116 +60,132 @@ class Solution {
 
     static class Tokens implements Iterator<String> {
 
-        final Iterator<String> iterator;
+         Iterator<String> lineIterator;
+         Iterator<String> tokenIterator;
 
-        Tokens(final String[] tokens) {
-            this.iterator = Arrays.asList(tokens).iterator();
+
+        Tokens(final List<String> lines) {
+            lineIterator = lines.iterator();
+            tokenizeNextLine();
         }
 
         @Override
         public boolean hasNext() {
-            return iterator.hasNext();
+            return tokenIterator.hasNext() || lineIterator.hasNext();
         }
 
         @Override
         public String next() {
-            return iterator.next();
+            if (!tokenIterator.hasNext()) {
+                tokenizeNextLine();
+            }
+            return tokenIterator.next();
+        }
+
+        private void tokenizeNextLine() {
+            tokenIterator = Arrays.asList(lineIterator.next().trim().split(" ")).iterator();
         }
     }
 
     enum InstructionSet {
         ADD(parser ->
-                new Instruction("Add", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v0 + v1);
+                new Instruction("Add", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v0 + v1);
                 })
         ),
         SUB(parser ->
-                new Instruction("Sub", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v0 - v1);
+                new Instruction("Sub", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v0 - v1);
                 })
         ),
         MUL(parser ->
-                new Instruction("Mul", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v0 * v1);
+                new Instruction("Mul", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v0 * v1);
                 })
         ),
         DIV(parser ->
-                new Instruction("Div", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v0 / v1);
+                new Instruction("Div", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v0 / v1);
                 })
         ),
         MOD(parser ->
-                new Instruction("Mod", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v0 % v1);
+                new Instruction("Mod", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v0 % v1);
                 })
         ),
         POP(parser ->
-                new Instruction("Pop", (stack, table) -> stack.pop())
+                new Instruction("Pop", ctx -> ctx.stack.pop())
         ),
         DUP(parser ->
-                new Instruction("Dup", (stack, table) -> {
-                    final int v0 = stack.peek();
-                    stack.push(v0);
+                new Instruction("Dup", ctx -> {
+                    final int v0 = ctx.stack.peek();
+                    ctx.stack.push(v0);
                 })
         ),
         SWP(parser ->
-                new Instruction("Swp", (stack, table) -> {
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v1);
-                    stack.push(v0);
+                new Instruction("Swp", ctx -> {
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v1);
+                    ctx.stack.push(v0);
                 })
         ),
         ROT(parser ->
-                new Instruction("Rot", (stack, table) -> {
-                    final int v2 = stack.pop();
-                    final int v1 = stack.pop();
-                    final int v0 = stack.pop();
-                    stack.push(v1);
-                    stack.push(v2);
-                    stack.push(v0);
+                new Instruction("Rot", ctx -> {
+                    final int v2 = ctx.stack.pop();
+                    final int v1 = ctx.stack.pop();
+                    final int v0 = ctx.stack.pop();
+                    ctx.stack.push(v1);
+                    ctx.stack.push(v2);
+                    ctx.stack.push(v0);
                 })
         ),
         OVR(parser ->
-                new Instruction("Ovr", (stack, table) -> {
-                    final int v0 = stack.pop();
-                    final int v1 = stack.peek();
-                    stack.push(v0);
-                    stack.push(v1);
+                new Instruction("Ovr", ctx -> {
+                    final int v0 = ctx.stack.pop();
+                    final int v1 = ctx.stack.peek();
+                    ctx.stack.push(v0);
+                    ctx.stack.push(v1);
                 })
         ),
         POS(parser ->
-                new Instruction("Pos", (stack, table) -> {
-                    final int value = stack.pop();
-                    stack.push(value >= 0 ? 1 : 0);
+                new Instruction("Pos", ctx -> {
+                    final int value = ctx.stack.pop();
+                    ctx.stack.push(value >= 0 ? 1 : 0);
                 })
         ),
         NOT(parser ->
-                new Instruction("Not", (stack, table) -> {
-                    final int value = stack.pop();
-                    stack.push(value == 0 ? 1 : 0);
+                new Instruction("Not", ctx -> {
+                    final int value = ctx.stack.pop();
+                    ctx.stack.push(value == 0 ? 1 : 0);
                 })
         ),
         OUT(parser ->
-                new Instruction("Out", (stack, table) -> {
-                    final int v0 = stack.pop();
-                    System.out.println(v0);
+                new Instruction("Out", ctx -> {
+                    final int v0 = ctx.stack.pop();
+                    ctx.io.write(v0);
+                })
+        ),
+        IN(parser ->
+                new Instruction("In", ctx -> {
+                    final int value = ctx.io.read();
+                    ctx.stack.push(value);
                 })
         ),
         DEF(parser -> {
             final String name = parser.tokens.next();
             parser.beginBlock();
-            return new Instruction("Def " + name, (stack, table) -> {
+            return new Instruction("Def " + name, ctx -> {
             });
         }),
         END(parser -> {
@@ -169,12 +197,12 @@ class Solution {
         }),
         IF(parser -> {
             parser.beginBlock();
-            return new Instruction("If", (stack, table) -> {
+            return new Instruction("If", ctx -> {
             });
         }),
         ELS(parser -> {
             parser.beginBlock();
-            return new Instruction("Els", (stack, table) -> {
+            return new Instruction("Els", ctx -> {
             });
         }),
         FI(parser -> {
@@ -193,9 +221,9 @@ class Solution {
 
         static class Call extends Instruction {
             Call(String name) {
-                super("Call(" + name + ")", (stack, table) -> {
-                    if (table.containsKey(name)) {
-                        table.get(name).forEach(instruction -> instruction.execute(stack, table));
+                super("Call(" + name + ")", ctx -> {
+                    if (ctx.table.containsKey(name)) {
+                        ctx.table.get(name).forEach(instruction -> instruction.execute(ctx));
                     } else {
                         throw new RuntimeException(name);
                     }
@@ -205,7 +233,7 @@ class Solution {
 
         static class Push extends Instruction {
             Push(final String value) {
-                super("Push(" + value + ")", (stack, table) -> stack.push(Integer.parseInt(value)));
+                super("Push(" + value + ")", ctx -> ctx.stack.push(Integer.parseInt(value)));
             }
         }
 
@@ -213,7 +241,7 @@ class Solution {
             private final Instructions instructions;
 
             Definition(String name, Instructions instructions) {
-                super("Def(" + name + ")", (stack, table) -> table.put(name, instructions));
+                super("Def(" + name + ")", ctx -> ctx.table.put(name, instructions));
                 this.instructions = instructions;
             }
 
@@ -236,13 +264,13 @@ class Solution {
             }
 
             private Conditional(String name, Instructions affirmative, Instructions zero) {
-                super(name, ((stack, table) -> {
-                    if (stack.pop() == 0) {
-                        zero.forEach(i -> i.execute(stack, table));
+                super(name, (ctx) -> {
+                    if (ctx.stack.pop() == 0) {
+                        zero.forEach(i -> i.execute(ctx));
                     } else {
-                        affirmative.forEach(i -> i.execute(stack, table));
+                        affirmative.forEach(i -> i.execute(ctx));
                     }
-                }));
+                });
                 this.affirmative = affirmative;
                 this.zero = zero;
             }
@@ -261,10 +289,10 @@ class Solution {
         }
 
         static Optional<Instruction> get(final String token, final Parser parser) {
-            final Optional<InstructionSet> value = Arrays.stream(InstructionSet.values())
+            return Arrays.stream(InstructionSet.values())
                     .filter(v -> v.name().equals(token))
-                    .findAny();
-            return value.map(v -> v.factory.apply(parser));
+                    .findAny()
+                    .map(v -> v.factory.apply(parser));
         }
 
     }
@@ -312,21 +340,45 @@ class Solution {
 
     }
 
-    static class Interpreter {
+    static class IO {
+        private final Scanner in;
+        private final PrintStream out;
+        public IO(Scanner in, PrintStream out) {
+            this.in = in;
+            this.out = out;
+        }
 
+        int read() {
+            return in.nextInt();
+        }
+
+        void write(int value) {
+            out.println(value);
+        }
+    }
+
+    static class Interpreter {
         final ValueStack stack = new ValueStack();
         final FunctionTable functionTable = new FunctionTable();
+        final IO io;
 
-        Instructions process(final String line) {
-            System.err.println(line);
-            final Tokens tokens = new Tokens(line.split(" "));
-            final Instructions instructions = evaluate(tokens);
+        Interpreter(Scanner in, PrintStream out) {
+            io = new IO(in, out);
+        }
+
+        Instructions process(final List<String> lines) {
+            System.err.println("=== INPUT");
+            lines.forEach(System.err::println);
+            final Tokens tokens = new Tokens(lines);
+            final Instructions instructions = parse(tokens);
+            System.err.println("=== OUTPUT");
             instructions.forEach(System.err::println);
-            instructions.forEach(i -> i.execute(stack, functionTable));
+            final Context context = new Context(stack, functionTable, io);
+            instructions.forEach(i -> i.execute(context));
             return instructions;
         }
 
-        Instructions evaluate(final Tokens tokens) {
+        Instructions parse(final Tokens tokens) {
             final Parser parser = new Parser(tokens);
             parser.beginBlock();
             while (tokens.hasNext()) {
@@ -341,11 +393,22 @@ class Solution {
     }
 
     public static void main(String args[]) {
-        final InputStream in = System.in;
-        new Solution().run(in);
+        new Solution().run();
     }
 
-    public void run(InputStream input) {
+    private final InputStream input;
+    private final PrintStream output;
+
+    Solution() {
+        this(System.in, System.out);
+    }
+
+    Solution(InputStream input, PrintStream output) {
+        this.input = input;
+        this.output = output;
+    }
+
+    public void run() {
         final Scanner in = new Scanner(input);
 
         final int count = in.nextInt();
@@ -354,15 +417,9 @@ class Solution {
         final List<String> lines = new ArrayList<>();
         for (int i = 0; i < count; i++) {
             final String line = in.nextLine();
-            System.err.println(line);
-            lines.add(line);
+             lines.add(line);
         }
-        System.err.println("===========================");
-
-        final String program = lines.stream()
-                .map(String::trim)
-                .collect(Collectors.joining(" "));
-        final Interpreter interpreter = new Interpreter();
-        interpreter.process(program);
+        final Interpreter interpreter = new Interpreter(in, output);
+        interpreter.process(lines);
     }
 }

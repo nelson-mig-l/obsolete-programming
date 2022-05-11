@@ -1,6 +1,10 @@
 # OBSOLETE PROGRAMMING
 
-##Goal
+Java solution for [codingame puzzle obsolete programming](https://www.codingame.com/training/hard/obsolete-programming)
+
+Slightly edited description below.
+
+## Goal
 
 How is your CSB ? Very bad, in fact, and you have been moved from the prestigious Bot Division to the awful Legacy Softwares Division where you must maintain obsolete and crappy code that runs 90% of your corporation's business.
 
