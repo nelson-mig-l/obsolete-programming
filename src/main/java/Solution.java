@@ -1,7 +1,8 @@
-import java.io.*;
+import java.io.InputStream;
+import java.io.PrintStream;
 import java.util.*;
-import java.util.function.*;
-import java.util.stream.Collectors;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 class Solution {
 
